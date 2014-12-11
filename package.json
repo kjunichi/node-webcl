@@ -1,16 +1,19 @@
 {
   "name": "node-webcl",
-  "version": "0.9.0",
+  "version": "0.8.3",
   "description": "A WebCL implementation for desktops with NodeJS",
   "main": "webcl.js",
-  "author": "Mikael Bourges-Sevenier <mikeseven@gmail.com>",
+  "author": {
+    "name": "Mikael Bourges-Sevenier",
+    "email": "mikeseven@gmail.com"
+  },
   "keywords": [
     "webcl",
     "opencl"
   ],
   "maintainers": [
     {
-      "name": "Mikael Bourges-Sevenier",
+      "name": "mikeseven",
       "email": "mikeseven@gmail.com"
     }
   ],
@@ -37,10 +40,26 @@
   "dependencies": {
     "node-webgl": ">=0.4.2",
     "node-image": ">=0.7.1",
-    "nan": "^0.8.0"
+    "nan": ">=0.8.0"
   },
-  "devDependencies": {
-    "chai": "*",
-    "mocha": "*"
-  }
+  "gitHead": "578ac8fee7694ef4dbb0b94db3d2fd6bbe502664",
+  "gypfile": true,
+  "bugs": {
+    "url": "https://github.com/Motorola-Mobility/node-webcl/issues"
+  },
+  "homepage": "https://github.com/Motorola-Mobility/node-webcl",
+  "_id": "node-webcl@0.8.3",
+  "_shasum": "18f7e3f6190f212d1a8e30b3807cec4e41502df7",
+  "_from": "node-webcl@",
+  "_npmVersion": "1.4.14",
+  "_npmUser": {
+    "name": "mikeseven",
+    "email": "mikeseven@gmail.com"
+  },
+  "dist": {
+    "shasum": "18f7e3f6190f212d1a8e30b3807cec4e41502df7",
+    "tarball": "http://registry.npmjs.org/node-webcl/-/node-webcl-0.8.3.tgz"
+  },
+  "_resolved": "https://registry.npmjs.org/node-webcl/-/node-webcl-0.8.3.tgz",
+  "readme": "ERROR: No README data found!"
 }

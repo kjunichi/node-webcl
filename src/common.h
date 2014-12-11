@@ -56,31 +56,21 @@ using namespace std;
     #include <OpenCL/opencl.h>
     #define CL_GL_CONTEXT_KHR 0x2008
     #define CL_EGL_DISPLAY_KHR 0x2009
-    #define CL_INVALID_GL_SHAREGROUP_REFERENCE_KHR CL_INVALID_GL_CONTEXT_APPLE
   #endif
-  #define HAS_clGetContextInfo
 #elif defined(_WIN32)
     #include <GL/gl.h>
     #include <CL/opencl.h>
-    #define strcasecmp _stricmp
 #else
     #include <GL/gl.h>
     #include <GL/glx.h>
     #include <CL/opencl.h>
 #endif
 
-#ifndef CL_CURRENT_DEVICE_FOR_GL_CONTEXT_KHR
-  #define CL_CURRENT_DEVICE_FOR_GL_CONTEXT_KHR 0x2006 
-#endif
-#ifndef CL_DEVICES_FOR_GL_CONTEXT_KHR
-  #define CL_DEVICES_FOR_GL_CONTEXT_KHR 0x2007 
-#endif
-
 namespace {
-#define JS_STR(...) v8::String::New(__VA_ARGS__)
-#define JS_INT(val) v8::Integer::New(val)
-#define JS_NUM(val) v8::Number::New(val)
-#define JS_BOOL(val) v8::Boolean::New(val)
+#define JS_STR(...) v8::String::NewFromUtf8(v8::Isolate::GetCurrent(),__VA_ARGS__)
+#define JS_INT(val) v8::Integer::New(v8::Isolate::GetCurrent(),val)
+#define JS_NUM(val) v8::Number::New(v8::Isolate::GetCurrent(), val)
+#define JS_BOOL(val) v8::Boolean::New(v8::Isolate::GetCurrent(),val)
 #define JS_RETHROW(tc) v8::Local<v8::Value>::New(tc.Exception());
 
 #define REQ_ARGS(N)                                                     \
@@ -102,9 +92,7 @@ namespace {
     NanThrowTypeError("Argument " #I " must be a function");            \
   Local<Function> VAR = Local<Function>::Cast(args[I]);
 
-#define REQ_ERROR_THROW_NONE(error) if (ret == CL_##error) ThrowException(NanObjectWrapHandle(WebCLException::New(#error, ErrorDesc(CL_##error), CL_##error))); return;
-
-#define REQ_ERROR_THROW(error) if (ret == CL_##error) return ThrowException(NanObjectWrapHandle(WebCLException::New(#error, ErrorDesc(CL_##error), CL_##error)));
+#define REQ_ERROR_THROW(error) if (ret == error) NanThrowError(String::NewFromUtf8(v8::Isolate::GetCurrent(),#error));
 
 #define DESTROY_WEBCL_OBJECT(obj)	\
   obj->Destructor();			\
@@ -113,8 +101,6 @@ namespace {
 } // namespace
 
 namespace webcl {
-
-const char* ErrorDesc(cl_int err);
 
 // generic baton for async callbacks
 struct Baton {
@@ -141,58 +127,25 @@ void registerCLObj(WebCLObject* obj);
 void unregisterCLObj(WebCLObject* obj);
 void AtExit(void* arg);
 
-namespace CLObjType {
-enum CLObjType {
-  None=0,
-  Platform,
-  Device,
-  Context,
-  CommandQueue,
-  Kernel,
-  Program,
-  Sampler,
-  Event,
-  MemoryObject,
-  Exception,
-};
-}
-
-WebCLObject* findCLObj(void* type);
-
 class WebCLObject : public node::ObjectWrap {
 protected:
-  WebCLObject() : _type(CLObjType::None) {}
-  // virtual ~WebCLObject() {
-  //   // printf("Destructor WebCLObject\n");
-  //   // Destructor();
-  //   // unregisterCLObj(this);
-  // }
-
-#define isA(value, type) ((int)value & (int)type)==(int)type
-public:
-  virtual void Destructor() { 
-#ifdef LOGGING
-    printf("In WebCLObject::Destructor\n"); 
-#endif
+  virtual ~WebCLObject() {
+    // printf("Destructor WebCLObject\n");
+    Destructor();
+    unregisterCLObj(this);
   }
-  CLObjType::CLObjType getType() { return _type; }
-  bool isPlatform() const { return isA(_type, CLObjType::Platform); }
-  bool isDevice() const { return isA(_type, CLObjType::Device); }
-  bool isKernel() const { return isA(_type, CLObjType::Kernel); }
-  bool isCommandQueue() const { return isA(_type, CLObjType::CommandQueue); }
-  bool isMemoryObject() const { return isA(_type, CLObjType::MemoryObject); }
-  bool isProgram() const { return isA(_type, CLObjType::Program); }
-  bool isSampler() const { return isA(_type, CLObjType::Sampler); }
-  bool isEvent() const { return isA(_type, CLObjType::Event); }
-  bool isContext() const { return isA(_type, CLObjType::Context); }
-  virtual bool isEqual(void *clObj) { return false; }
 
-protected:
-  CLObjType::CLObjType _type;
+public:
+  virtual void Destructor() {}
+  virtual bool isKernel() const { return false; }
+  virtual bool isCommandQueue() const { return false; }
+  virtual bool isMemoryObject() const { return false; }
+  virtual bool isProgram() const { return false; }
+  virtual bool isSampler() const { return false; }
+  virtual bool isEvent() const { return false; }
+  virtual bool isContext() const { return false; }
 };
 
 } // namespace webcl
-
-#include "exceptions.h"
 
 #endif

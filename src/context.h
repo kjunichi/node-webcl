@@ -40,7 +40,6 @@ public:
   static void Init(v8::Handle<v8::Object> target);
 
   static Context *New(cl_context cw);
-  static Context *New(cl_context cw, v8::Handle<v8::Object> webgl_context);
   static NAN_METHOD(New);
 
   static NAN_METHOD(getInfo);
@@ -57,13 +56,8 @@ public:
   static NAN_METHOD(release);
   static NAN_METHOD(releaseAll);
 
-#ifdef HAS_clGetContextInfo
-  static NAN_METHOD(getGLContextInfo);
-#endif
-  static NAN_METHOD(getGLContext);
-
   cl_context getContext() const { return context; };
-  virtual bool isEqual(void *clObj) { return ((cl_context)clObj)==context; }
+  virtual bool isContext() const { return true; }
 
 private:
   Context(v8::Handle<v8::Object> wrapper);
@@ -71,7 +65,6 @@ private:
   static v8::Persistent<v8::FunctionTemplate> constructor_template;
 
   cl_context context;
-  v8::Handle<v8::Object> webgl_context_;
 };
 
 } // namespace

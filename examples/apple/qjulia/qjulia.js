@@ -37,8 +37,6 @@ if(nodejs) {
   ATB=document.AntTweakBar;
   Image = WebGL.Image;
 }
-else
-  WebCL = window.webcl;
 
 requestAnimationFrame = document.requestAnimationFrame;
 var use_gpu=true;
@@ -350,30 +348,46 @@ function CLGL() {
     setupComputeDevices:function(device_type) {
       log('setup compute devices');
       
-      // Pick platform
-      var platformList = WebCL.getPlatforms();
-      var platform = platformList[0];
-      var devices = platform.getDevices(ComputeDeviceType ? WebCL.DEVICE_TYPE_GPU : WebCL.DEVICE_TYPE_DEFAULT);
-      ComputeDeviceId=devices[0];
+      //Pick platform
+      // var platformList=WebCL.getPlatforms();
+      // var platform=platformList[0];
 
-      // make sure we use a discrete GPU
-      for(var i=0;i<devices.length;i++) {
-        var vendor=devices[i].getInfo(WebCL.DEVICE_VENDOR);
-        // log('found vendor '+vendor+', is Intel? '+(vendor.indexOf('Intel')>=0))
-        if(vendor.indexOf('Intel')==-1)
-          ComputeDeviceId=devices[i];
+      ComputeDeviceType = device_type ? WebCL.DEVICE_TYPE_GPU : WebCL.DEVICE_TYPE_CPU;
+      ComputeContext = WebCL.createContext({
+        deviceType: ComputeDeviceType,
+        // platform: platform,
+        shareGroup: gl
+      });
+
+      var device_ids = ComputeContext.getInfo(WebCL.CONTEXT_DEVICES);
+      if(!device_ids)
+      {
+          alert("Error: Failed to retrieve compute devices for context!");
+          return -1;
       }
-      log('found '+devices.length+' devices, using device: '+ComputeDeviceId.getInfo(WebCL.DEVICE_NAME));
-
-      if(!ComputeDeviceId.enableExtension('KHR_gl_sharing'))
-        throw new Error("Can NOT use GL sharing");
-
-      // create the OpenCL context
-      try {
-        ComputeContext = WebCL.createContext(gl, ComputeDeviceId);
+      
+      var device_found=false;
+      for(var i=0,l=device_ids.length;i<l;++i ) 
+      {
+        device_type=device_ids[i].getInfo(WebCL.DEVICE_TYPE);
+        if(device_type == ComputeDeviceType) 
+        {
+            ComputeDeviceId = device_ids[i];
+            device_found = true;
+            break;
+        } 
       }
-      catch(err) {
-        throw "Error: Failed to create context! "+err;
+      
+      if(!device_found)
+      {
+          alert("Error: Failed to locate compute device!");
+          return -1;
+      }
+          
+      // get CL-GL extension
+      if(!ComputeDeviceId.enableExtension("KHR_gl_sharing")) {
+        log("CL-GL not available!");
+        process.exit(1);
       }
 
       // Create a command queue
@@ -712,12 +726,11 @@ function CLGL() {
         if(Animated || Update)
         {
             Update = false;
-
             try {
               ComputeKernel.setArg(0, ComputeResult);
-              ComputeKernel.setArg(1, new Float32Array(MuC));
-              ComputeKernel.setArg(2, new Float32Array(ColorC));
-              ComputeKernel.setArg(3, new Float32Array([Epsilon]));
+              ComputeKernel.setArg(1, MuC, WebCL.type.FLOAT | WebCL.type.VEC4);
+              ComputeKernel.setArg(2, ColorC, WebCL.type.FLOAT | WebCL.type.VEC4);
+              ComputeKernel.setArg(3, Epsilon, WebCL.type.FLOAT);
             } catch (err) {
               alert("Failed to set kernel args! " + err);
               return -10;
@@ -729,7 +742,7 @@ function CLGL() {
                        clu.DivUp(TextureHeight, local[1]) * local[1] ];
         
         try {
-          ComputeCommands.enqueueNDRangeKernel(ComputeKernel, 2, null, global, local);
+          ComputeCommands.enqueueNDRangeKernel(ComputeKernel, null, global, local);
         }
         catch(err)
         {

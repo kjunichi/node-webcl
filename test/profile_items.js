@@ -30,8 +30,6 @@ if(nodejs) {
   log = console.log;
   exit = process.exit;
 }
-else
-  WebCL = window.webcl;
 
 function read_complete(status, data) {
   log('in read_complete, status: '+status);
@@ -64,47 +62,39 @@ function main() {
   var num_ints = NUM_INTS;
   var num_items = NUM_ITEMS;
 
-  /* Create a device and context */ 
-  // Pick platform
-  var platformList=WebCL.getPlatforms();
-  platform=platformList[0];
-  log('found '+platformList.length+' platforms, using platform: '+platform.getInfo(WebCL.PLATFORM_NAME));
+  /* Create a device and context */
+  log('creating context');
   
-  //Query the set of devices on this platform
-  var devices = platform.getDevices(WebCL.DEVICE_TYPE_ALL);
-
-  // make sure we use a discrete GPU
+  // //Pick platform
+  // var platformList=WebCL.getPlatforms();
+  // platform=platformList[0];
+  // log('using platform: '+platform.getInfo(WebCL.PLATFORM_NAME));
+  
+  // //Query the set of devices on this platform
+  // var devices = platform.getDevices(WebCL.DEVICE_TYPE_DEFAULT);
   // device=devices[0];
-  // for(var i=0;i<devices.length;i++) {
-  //   var vendor=devices[i].getInfo(WebCL.DEVICE_VENDOR);
-  //   if(vendor.indexOf('Intel')==-1)
-  //     device=devices[i];
-  // }
-  // log('found '+devices.length+' devices, using device: '+device.getInfo(WebCL.DEVICE_NAME));
+  // log('using device: '+device.getInfo(WebCL.DEVICE_NAME));
 
-  // create GPU context for this platform
+  // // create GPU context for this platform
+  // var context=WebCL.createContext({
+  //   devices: device, 
+  //   platform: platform
+  // });
+
   var context=null;
   try {
-    //context=WebCL.createContext(device);
-
-    // context=WebCL.createContext(devices);
-    // device=devices[0];
-
-    context=WebCL.createContext(platform, WebCL.DEVICE_TYPE_GPU);
-    devices=context.getInfo(WebCL.CONTEXT_DEVICES);
-    device=devices[0];
-    for(var i=0;i<devices.length;i++) {
-      var vendor=devices[i].getInfo(WebCL.DEVICE_VENDOR);
-      // log('found vendor '+vendor+', is Intel? '+vendor.indexOf('Intel'))
-      if(vendor.indexOf('Intel')==-1)
-        device=devices[i];
-    }
-    log('using device: '+device.getInfo(WebCL.DEVICE_NAME));
+    context=WebCL.createContext({
+      deviceType: WebCL.DEVICE_TYPE_ALL, 
+      // platform: platform
+    });
   }
   catch(ex) {
-    throw new Error("Can't create CL context "+ex);
-    exit(-1);
+    throw new Error("Can't create CL context");
   }
+
+  var devices=context.getInfo(WebCL.CONTEXT_DEVICES);
+  log("Found "+devices.length+" devices");
+  var device=devices[0];
 
   /* Build the program and create a kernel */
   var source = [
@@ -129,11 +119,10 @@ function main() {
 
   /* Build program */
   try {
-    program.build(device);
+    program.build(devices);
   } catch(ex) {
     /* Find size of log and print to std output */
-    log("Error building program");
-    var info=program.getBuildInfo(devices, WebCL.PROGRAM_BUILD_LOG);
+    var info=program.getBuildInfo(devices[0], WebCL.PROGRAM_BUILD_LOG);
     log(info);
     exit(1);
   }
@@ -156,7 +145,7 @@ function main() {
   /* Create kernel argument */
   try {
     kernel.setArg(0, data_buffer);
-    kernel.setArg(1, new Int32Array([num_ints]));
+    kernel.setArg(1, num_ints, WebCL.type.INT);
   } catch(ex) {
     log("Couldn't set a kernel argument. "+ex);
     exit(1);   
@@ -175,7 +164,7 @@ function main() {
     var prof_event=new WebCL.WebCLEvent();
     /* Enqueue kernel */
     try {
-      queue.enqueueNDRangeKernel(kernel, 1, null, [num_items], null, null, prof_event);
+      queue.enqueueNDRangeKernel(kernel, null, [num_items], null, null, prof_event);
     } catch(ex) {
       log("Couldn't enqueue the kernel. "+ex);
       exit(1);   

@@ -40,8 +40,6 @@ if(nodejs) {
   //Compute = require('./compute_droplet2d');
   //Compute = require('./compute_droplet3d');
 }
-else
-  WebCL = window.webcl;
 
 log = console.log;
 requestAnimationFrame = document.requestAnimationFrame;

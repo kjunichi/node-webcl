@@ -45,11 +45,9 @@ namespace webcl {
     if(!arg->IsUndefined() && !arg->IsNull()) { \
       Local<Array> arr = Local<Array>::Cast(arg); \
       num_events_wait_list=arr->Length(); \
-      if(num_events_wait_list>0) {\
-        events_wait_list=new cl_event[num_events_wait_list]; \
-        for(cl_uint i=0;i<num_events_wait_list;i++) \
-          events_wait_list[i]=ObjectWrap::Unwrap<Event>(arr->Get(i)->ToObject())->getEvent(); \
-      }\
+      events_wait_list=new cl_event[num_events_wait_list]; \
+      for(cl_uint i=0;i<num_events_wait_list;i++) \
+        events_wait_list[i]=ObjectWrap::Unwrap<Event>(arr->Get(i)->ToObject())->getEvent(); \
     }
 
 Persistent<FunctionTemplate> CommandQueue::constructor_template;
@@ -59,8 +57,8 @@ void CommandQueue::Init(Handle<Object> target)
   NanScope();
 
   // constructor
-  Local<FunctionTemplate> ctor = FunctionTemplate::New(CommandQueue::New);
-  NanAssignPersistent(FunctionTemplate, constructor_template, ctor);
+  Local<FunctionTemplate> ctor = FunctionTemplate::New(v8::Isolate::GetCurrent(),CommandQueue::New);
+  NanAssignPersistent(constructor_template, ctor);
   ctor->InstanceTemplate()->SetInternalFieldCount(1);
   ctor->SetClassName(NanSymbol("WebCLCommandQueue"));
 
@@ -96,20 +94,22 @@ void CommandQueue::Init(Handle<Object> target)
 
 CommandQueue::CommandQueue(Handle<Object> wrapper) : command_queue(0)
 {
-  _type=CLObjType::CommandQueue;
 }
 
 void CommandQueue::Destructor() {
-#ifdef LOGGING
+  #ifdef LOGGING
   cout<<"  Destroying CL command queue"<<endl;
-#endif
+  #endif
   if(command_queue) {
-#ifdef LOGGING
     cl_uint count;
-    ::clGetCommandQueueInfo(command_queue,CL_QUEUE_REFERENCE_COUNT,sizeof(cl_uint),&count,NULL);
+    ::clGetCommandQueueInfo(command_queue,CL_QUEUE_REFERENCE_COUNT,sizeof(cl_uint),&count,0);
+#ifdef LOGGING
     cout<<"CommandQueue ref count is: "<<count<<endl;
 #endif
     ::clReleaseCommandQueue(command_queue);
+#ifdef LOGGING
+    cout<<"CommandQueue released"<<endl;
+#endif
     }
   command_queue=0;
 }
@@ -123,9 +123,9 @@ NAN_METHOD(CommandQueue::release)
   cl_int ret = ::clFlush(cq->getCommandQueue());
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
   
@@ -145,57 +145,41 @@ NAN_METHOD(CommandQueue::getInfo)
     cl_context ctx=0;
     cl_int ret=::clGetCommandQueueInfo(cq->getCommandQueue(), param_name, sizeof(cl_context), &ctx, NULL);
     if (ret != CL_SUCCESS) {
-      REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-      REQ_ERROR_THROW(INVALID_VALUE);
-      REQ_ERROR_THROW(OUT_OF_RESOURCES);
-      REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+      REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+      REQ_ERROR_THROW(CL_INVALID_VALUE);
+      REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+      REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
       return NanThrowError("UNKNOWN ERROR");
     }
-    if(ctx) {
-      WebCLObject *obj=findCLObj((void*)ctx);
-      if(obj) {
-        clRetainContext(ctx);
-        NanReturnValue(NanObjectWrapHandle(obj));
-      }
-    }
-    NanReturnUndefined();
+    NanReturnValue(NanObjectWrapHandle(Context::New(ctx)));
   }
   case CL_QUEUE_DEVICE: {
     cl_device_id dev=0;
     cl_int ret=::clGetCommandQueueInfo(cq->getCommandQueue(), param_name, sizeof(cl_device_id), &dev, NULL);
     if (ret != CL_SUCCESS) {
-      REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-      REQ_ERROR_THROW(INVALID_VALUE);
-      REQ_ERROR_THROW(OUT_OF_RESOURCES);
-      REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+      REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+      REQ_ERROR_THROW(CL_INVALID_VALUE);
+      REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+      REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
       return NanThrowError("UNKNOWN ERROR");
     }
-
-    if(dev) {
-      WebCLObject *obj=findCLObj((void*)dev);
-
-      if(obj) {
-        clRetainDevice(dev);
-        NanReturnValue(NanObjectWrapHandle(obj));
-      }
-    }
-    NanReturnUndefined();
+    NanReturnValue(NanObjectWrapHandle(Device::New(dev)));
   }
-  // case CL_QUEUE_REFERENCE_COUNT:
+  case CL_QUEUE_REFERENCE_COUNT:
   case CL_QUEUE_PROPERTIES: {
-    cl_command_queue_properties param_value;
-    cl_int ret=::clGetCommandQueueInfo(cq->getCommandQueue(), param_name, sizeof(cl_command_queue_properties), &param_value, NULL);
+    cl_uint param_value;
+    cl_int ret=::clGetCommandQueueInfo(cq->getCommandQueue(), param_name, sizeof(cl_uint), &param_value, NULL);
     if (ret != CL_SUCCESS) {
-      REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-      REQ_ERROR_THROW(INVALID_VALUE);
-      REQ_ERROR_THROW(OUT_OF_RESOURCES);
-      REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+      REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+      REQ_ERROR_THROW(CL_INVALID_VALUE);
+      REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+      REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
       return NanThrowError("UNKNOWN ERROR");
     }
     NanReturnValue(JS_INT(param_value));
   }
   default:
-    return NanThrowError("INVALID_VALUE");
+    return NanThrowError("CL_INVALID_VALUE");
   }
 }
 
@@ -204,15 +188,14 @@ NAN_METHOD(CommandQueue::enqueueNDRangeKernel)
   NanScope();
   CommandQueue *cq = ObjectWrap::Unwrap<CommandQueue>(args.This());
 
-  REQ_ARGS(5);
+  REQ_ARGS(4);
 
   Kernel *kernel = ObjectWrap::Unwrap<Kernel>(args[0]->ToObject());
-  int workDim = args[1]->Uint32Value();
 
   size_t *offsets=NULL;
   cl_uint num_offsets=0;
-  if(!args[2]->IsUndefined() && !args[2]->IsNull()) {
-    Local<Array> arr = Local<Array>::Cast(args[2]);
+  if(!args[1]->IsUndefined() && !args[1]->IsNull()) {
+    Local<Array> arr = Local<Array>::Cast(args[1]);
     num_offsets=arr->Length();
     if (num_offsets > 0) {
       offsets = new size_t[num_offsets];
@@ -223,8 +206,8 @@ NAN_METHOD(CommandQueue::enqueueNDRangeKernel)
 
   size_t *globals=NULL;
   cl_uint num_globals=0;
-  if(!args[3]->IsUndefined() && !args[3]->IsNull()) {
-    Local<Array> arr = Local<Array>::Cast(args[3]);
+  if(!args[2]->IsUndefined() && !args[2]->IsNull()) {
+    Local<Array> arr = Local<Array>::Cast(args[2]);
     num_globals=arr->Length();
     if(num_globals == 0)
       NanThrowError("# globals must be at least 1");
@@ -235,8 +218,8 @@ NAN_METHOD(CommandQueue::enqueueNDRangeKernel)
 
   size_t *locals=NULL;
   cl_uint num_locals=0;
-  if(!args[4]->IsUndefined() && !args[4]->IsNull()) {
-    Local<Array> arr = Local<Array>::Cast(args[4]);
+  if(!args[3]->IsUndefined() && !args[3]->IsNull()) {
+    Local<Array> arr = Local<Array>::Cast(args[3]);
     num_locals=arr->Length();
     if(num_locals == 0)
       NanThrowError("# locals must be at least 1");
@@ -245,14 +228,14 @@ NAN_METHOD(CommandQueue::enqueueNDRangeKernel)
       locals[i]=arr->Get(i)->Uint32Value();
   }
 
-  MakeEventWaitList(args[5]);
+  MakeEventWaitList(args[4]);
 
   cl_event event;
-  bool no_event=(args[6]->IsUndefined()  || args[6]->IsNull());
+  bool no_event=(args[5]->IsUndefined()  || args[5]->IsNull());
 
   cl_int ret=::clEnqueueNDRangeKernel(
       cq->getCommandQueue(), kernel->getKernel(),
-      workDim, // work dimension
+      num_globals, // work dimension
       offsets,
       globals,
       locals,
@@ -266,29 +249,26 @@ NAN_METHOD(CommandQueue::enqueueNDRangeKernel)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    printf("[setArg] ret = %d\n",ret);
-    REQ_ERROR_THROW(INVALID_PROGRAM_EXECUTABLE);
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_KERNEL);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_KERNEL_ARGS);
-    REQ_ERROR_THROW(INVALID_WORK_DIMENSION);
-    REQ_ERROR_THROW(INVALID_GLOBAL_WORK_SIZE);
-    REQ_ERROR_THROW(INVALID_GLOBAL_OFFSET);
-    REQ_ERROR_THROW(INVALID_WORK_GROUP_SIZE);
-    REQ_ERROR_THROW(INVALID_WORK_ITEM_SIZE);
-    REQ_ERROR_THROW(MISALIGNED_SUB_BUFFER_OFFSET);
-    REQ_ERROR_THROW(INVALID_IMAGE_SIZE);
-    REQ_ERROR_THROW(IMAGE_FORMAT_NOT_SUPPORTED);
-    REQ_ERROR_THROW(MEM_OBJECT_ALLOCATION_FAILURE);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_INVALID_PROGRAM_EXECUTABLE);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_KERNEL);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_KERNEL_ARGS);
+    REQ_ERROR_THROW(CL_INVALID_WORK_DIMENSION);
+    REQ_ERROR_THROW(CL_INVALID_GLOBAL_OFFSET);
+    REQ_ERROR_THROW(CL_INVALID_WORK_GROUP_SIZE);
+    REQ_ERROR_THROW(CL_INVALID_WORK_ITEM_SIZE);
+    REQ_ERROR_THROW(CL_MISALIGNED_SUB_BUFFER_OFFSET);
+    REQ_ERROR_THROW(CL_INVALID_IMAGE_SIZE);
+    REQ_ERROR_THROW(CL_MEM_OBJECT_ALLOCATION_FAILURE);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
     return NanThrowError("UNKNOWN ERROR");
   }
 
   if(!no_event) {
-    Event *e=ObjectWrap::Unwrap<Event>(args[6]->ToObject());
+    Event *e=ObjectWrap::Unwrap<Event>(args[5]->ToObject());
     e->setEvent(event);
   }
   NanReturnUndefined();
@@ -317,19 +297,18 @@ NAN_METHOD(CommandQueue::enqueueTask)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_PROGRAM_EXECUTABLE);
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_KERNEL);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_KERNEL_ARGS);
-    REQ_ERROR_THROW(INVALID_WORK_GROUP_SIZE);
-    REQ_ERROR_THROW(MISALIGNED_SUB_BUFFER_OFFSET);
-    REQ_ERROR_THROW(INVALID_IMAGE_SIZE);
-    REQ_ERROR_THROW(IMAGE_FORMAT_NOT_SUPPORTED);
-    REQ_ERROR_THROW(MEM_OBJECT_ALLOCATION_FAILURE);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_INVALID_PROGRAM_EXECUTABLE);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_KERNEL);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_KERNEL_ARGS);
+    REQ_ERROR_THROW(CL_INVALID_WORK_GROUP_SIZE);
+    REQ_ERROR_THROW(CL_MISALIGNED_SUB_BUFFER_OFFSET);
+    REQ_ERROR_THROW(CL_INVALID_IMAGE_SIZE);
+    REQ_ERROR_THROW(CL_MEM_OBJECT_ALLOCATION_FAILURE);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -357,14 +336,8 @@ NAN_METHOD(CommandQueue::enqueueWriteBuffer)
       Local<Array> arr=Local<Array>::Cast(args[4]);
       ptr = arr->GetIndexedPropertiesExternalArrayData();
     }
-    else if(args[4]->IsObject()) {
-      Local<Object> obj=args[4]->ToObject();
-      String::AsciiValue name(obj->GetConstructorName());
-      if(!strcmp("Buffer",*name))
-        ptr=Buffer::Data(obj);
-      else
-        ptr = obj->GetIndexedPropertiesExternalArrayData();
-    }
+    else if(args[4]->IsObject())
+      ptr = args[4]->ToObject()->GetIndexedPropertiesExternalArrayData();
     else
       NanThrowError("Invalid memory object");
   }
@@ -384,17 +357,16 @@ NAN_METHOD(CommandQueue::enqueueWriteBuffer)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(MISALIGNED_SUB_BUFFER_OFFSET);
-    REQ_ERROR_THROW(EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
-    REQ_ERROR_THROW(MEM_OBJECT_ALLOCATION_FAILURE);
-    REQ_ERROR_THROW(INVALID_OPERATION);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_MISALIGNED_SUB_BUFFER_OFFSET);
+    REQ_ERROR_THROW(CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
+    REQ_ERROR_THROW(CL_MEM_OBJECT_ALLOCATION_FAILURE);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -441,14 +413,8 @@ NAN_METHOD(CommandQueue::enqueueWriteBufferRect)
       Local<Array> arr=Local<Array>::Cast(args[9]);
       ptr = arr->GetIndexedPropertiesExternalArrayData();
     }
-    else if(args[9]->IsObject()) {
-      Local<Object> obj=args[9]->ToObject();
-      String::AsciiValue name(obj->GetConstructorName());
-      if(!strcmp("Buffer",*name))
-        ptr=Buffer::Data(obj);
-      else
-        ptr = obj->GetIndexedPropertiesExternalArrayData();
-    }
+    else if(args[9]->IsObject())
+      ptr = args[9]->ToObject()->GetIndexedPropertiesExternalArrayData();
     else
       NanThrowError("Invalid memory object");
   }
@@ -477,17 +443,16 @@ NAN_METHOD(CommandQueue::enqueueWriteBufferRect)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(MISALIGNED_SUB_BUFFER_OFFSET);
-    REQ_ERROR_THROW(EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
-    REQ_ERROR_THROW(MEM_OBJECT_ALLOCATION_FAILURE);
-    REQ_ERROR_THROW(INVALID_OPERATION);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_MISALIGNED_SUB_BUFFER_OFFSET);
+    REQ_ERROR_THROW(CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
+    REQ_ERROR_THROW(CL_MEM_OBJECT_ALLOCATION_FAILURE);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -515,14 +480,8 @@ NAN_METHOD(CommandQueue::enqueueReadBuffer)
       Local<Array> arr=Local<Array>::Cast(args[4]);
       ptr = arr->GetIndexedPropertiesExternalArrayData();
     }
-    else if(args[4]->IsObject()) {
-      Local<Object> obj=args[4]->ToObject();
-      String::AsciiValue name(obj->GetConstructorName());
-      if(!strcmp("Buffer",*name))
-        ptr=Buffer::Data(obj);
-      else
-        ptr = obj->GetIndexedPropertiesExternalArrayData();
-    }
+    else if(args[4]->IsObject())
+      ptr = args[4]->ToObject()->GetIndexedPropertiesExternalArrayData();
     else
       NanThrowError("Invalid memory object");
   }
@@ -542,17 +501,16 @@ NAN_METHOD(CommandQueue::enqueueReadBuffer)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(MISALIGNED_SUB_BUFFER_OFFSET);
-    REQ_ERROR_THROW(EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
-    REQ_ERROR_THROW(MEM_OBJECT_ALLOCATION_FAILURE);
-    REQ_ERROR_THROW(INVALID_OPERATION);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_MISALIGNED_SUB_BUFFER_OFFSET);
+    REQ_ERROR_THROW(CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
+    REQ_ERROR_THROW(CL_MEM_OBJECT_ALLOCATION_FAILURE);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -599,14 +557,8 @@ NAN_METHOD(CommandQueue::enqueueReadBufferRect)
       Local<Array> arr=Local<Array>::Cast(args[9]);
       ptr = arr->GetIndexedPropertiesExternalArrayData();
     }
-    else if(args[9]->IsObject()) {
-      Local<Object> obj=args[9]->ToObject();
-      String::AsciiValue name(obj->GetConstructorName());
-      if(!strcmp("Buffer",*name))
-        ptr=Buffer::Data(obj);
-      else
-        ptr = obj->GetIndexedPropertiesExternalArrayData(); 
-    }
+    else if(args[9]->IsObject())
+      ptr = args[9]->ToObject()->GetIndexedPropertiesExternalArrayData();
     else
       NanThrowError("Invalid memory object");
   }
@@ -635,17 +587,16 @@ NAN_METHOD(CommandQueue::enqueueReadBufferRect)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(MISALIGNED_SUB_BUFFER_OFFSET);
-    REQ_ERROR_THROW(EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
-    REQ_ERROR_THROW(MEM_OBJECT_ALLOCATION_FAILURE);
-    REQ_ERROR_THROW(INVALID_OPERATION);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_MISALIGNED_SUB_BUFFER_OFFSET);
+    REQ_ERROR_THROW(CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
+    REQ_ERROR_THROW(CL_MEM_OBJECT_ALLOCATION_FAILURE);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -683,16 +634,16 @@ NAN_METHOD(CommandQueue::enqueueCopyBuffer)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(MISALIGNED_SUB_BUFFER_OFFSET);
-    REQ_ERROR_THROW(MEM_COPY_OVERLAP);
-    REQ_ERROR_THROW(MEM_OBJECT_ALLOCATION_FAILURE);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_MISALIGNED_SUB_BUFFER_OFFSET);
+    REQ_ERROR_THROW(CL_MEM_COPY_OVERLAP);
+    REQ_ERROR_THROW(CL_MEM_OBJECT_ALLOCATION_FAILURE);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -755,16 +706,16 @@ NAN_METHOD(CommandQueue::enqueueCopyBufferRect)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(MEM_COPY_OVERLAP);
-    REQ_ERROR_THROW(MISALIGNED_SUB_BUFFER_OFFSET);
-    REQ_ERROR_THROW(MEM_OBJECT_ALLOCATION_FAILURE);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_MEM_COPY_OVERLAP);
+    REQ_ERROR_THROW(CL_MISALIGNED_SUB_BUFFER_OFFSET);
+    REQ_ERROR_THROW(CL_MEM_OBJECT_ALLOCATION_FAILURE);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -796,30 +747,24 @@ NAN_METHOD(CommandQueue::enqueueWriteImage)
       region[i]=arr->Get(i)->Uint32Value();
 
   size_t row_pitch = args[4]->Uint32Value();
-  size_t slice_pitch = 0; //args[5]->Uint32Value(); // no slice_pitch in WebCL 1.0
+  size_t slice_pitch = args[5]->Uint32Value();
 
   void *ptr=NULL;
-  if(!args[5]->IsUndefined()) {
-    if(args[5]->IsArray()) {
-      Local<Array> arr=Local<Array>::Cast(args[5]);
+  if(!args[6]->IsUndefined()) {
+    if(args[6]->IsArray()) {
+      Local<Array> arr=Local<Array>::Cast(args[6]);
       ptr = arr->GetIndexedPropertiesExternalArrayData();
     }
-    else if(args[5]->IsObject()) {
-      Local<Object> obj=args[5]->ToObject();
-      String::AsciiValue name(obj->GetConstructorName());
-      if(!strcmp("Buffer",*name))
-        ptr=Buffer::Data(obj);
-      else
-        ptr = obj->GetIndexedPropertiesExternalArrayData();
-    }
+    else if(args[6]->IsObject())
+      ptr = args[6]->ToObject()->GetIndexedPropertiesExternalArrayData();
     else
       NanThrowError("Invalid memory object");
   }
 
-  MakeEventWaitList(args[6]);
+  MakeEventWaitList(args[7]);
 
   cl_event event;
-  bool no_event = (args[7]->IsUndefined() || args[7]->IsNull());
+  bool no_event = (args[8]->IsUndefined() || args[8]->IsNull());
 
   cl_int ret=::clEnqueueWriteImage(
       cq->getCommandQueue(), mo->getMemory(), blocking_write,
@@ -835,23 +780,22 @@ NAN_METHOD(CommandQueue::enqueueWriteImage)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(INVALID_IMAGE_SIZE);
-    REQ_ERROR_THROW(IMAGE_FORMAT_NOT_SUPPORTED);
-    REQ_ERROR_THROW(MEM_OBJECT_ALLOCATION_FAILURE);
-    REQ_ERROR_THROW(INVALID_OPERATION);
-    REQ_ERROR_THROW(EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_INVALID_IMAGE_SIZE);
+    REQ_ERROR_THROW(CL_MEM_OBJECT_ALLOCATION_FAILURE);
+    REQ_ERROR_THROW(CL_INVALID_OPERATION);
+    REQ_ERROR_THROW(CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
   if(!no_event) {
-    Event *e=ObjectWrap::Unwrap<Event>(args[7]->ToObject());
+    Event *e=ObjectWrap::Unwrap<Event>(args[8]->ToObject());
     e->setEvent(event);
   }
   NanReturnUndefined();
@@ -878,37 +822,30 @@ NAN_METHOD(CommandQueue::enqueueReadImage)
       region[i]=arr->Get(i)->Uint32Value();
 
   size_t row_pitch = args[4]->Uint32Value();
-  size_t slice_pitch = 0;
+  size_t slice_pitch = args[5]->Uint32Value();
 
   void *ptr=NULL;
-  if(!args[5]->IsUndefined()) {
-    if(args[5]->IsArray()) {
-      Local<Array> arr=Local<Array>::Cast(args[5]);
+  if(!args[6]->IsUndefined()) {
+    if(args[6]->IsArray()) {
+      Local<Array> arr=Local<Array>::Cast(args[6]);
       ptr = arr->GetIndexedPropertiesExternalArrayData();
     }
-    else if(args[5]->IsObject()) {
-      Local<Object> obj=args[5]->ToObject();
-      String::AsciiValue name(obj->GetConstructorName());
-      if(!strcmp("Buffer",*name))
-        ptr=Buffer::Data(obj);
-      else
-        ptr = obj->GetIndexedPropertiesExternalArrayData();
-    }
+    else if(args[6]->IsObject())
+      ptr = args[6]->ToObject()->GetIndexedPropertiesExternalArrayData();
     else
       NanThrowError("Invalid memory object");
   }
 
-  MakeEventWaitList(args[6]);
+  MakeEventWaitList(args[7]);
 
   cl_event event;
-  bool no_event = (args[7]->IsUndefined() || args[7]->IsNull());
+  bool no_event = (args[8]->IsUndefined() || args[8]->IsNull());
 
   cl_int ret=::clEnqueueReadImage(
       cq->getCommandQueue(), mo->getMemory(), blocking_read,
       origin,
       region,
-      row_pitch, slice_pitch, 
-      ptr,
+      row_pitch, slice_pitch, ptr,
       num_events_wait_list,
       events_wait_list,
       no_event ? NULL : &event);
@@ -916,18 +853,17 @@ NAN_METHOD(CommandQueue::enqueueReadImage)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(INVALID_IMAGE_SIZE);
-    REQ_ERROR_THROW(IMAGE_FORMAT_NOT_SUPPORTED);
-    REQ_ERROR_THROW(MEM_OBJECT_ALLOCATION_FAILURE);
-    REQ_ERROR_THROW(INVALID_OPERATION);
-    REQ_ERROR_THROW(EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_INVALID_IMAGE_SIZE);
+    REQ_ERROR_THROW(CL_MEM_OBJECT_ALLOCATION_FAILURE);
+    REQ_ERROR_THROW(CL_INVALID_OPERATION);
+    REQ_ERROR_THROW(CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -979,19 +915,18 @@ NAN_METHOD(CommandQueue::enqueueCopyImage)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(IMAGE_FORMAT_MISMATCH);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(INVALID_IMAGE_SIZE);
-    REQ_ERROR_THROW(IMAGE_FORMAT_NOT_SUPPORTED);
-    REQ_ERROR_THROW(MEM_OBJECT_ALLOCATION_FAILURE);
-    REQ_ERROR_THROW(INVALID_OPERATION);
-    REQ_ERROR_THROW(MEM_COPY_OVERLAP);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_IMAGE_FORMAT_MISMATCH);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_INVALID_IMAGE_SIZE);
+    REQ_ERROR_THROW(CL_MEM_OBJECT_ALLOCATION_FAILURE);
+    REQ_ERROR_THROW(CL_INVALID_OPERATION);
+    REQ_ERROR_THROW(CL_MEM_COPY_OVERLAP);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -1040,18 +975,17 @@ NAN_METHOD(CommandQueue::enqueueCopyImageToBuffer)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(MISALIGNED_SUB_BUFFER_OFFSET);
-    REQ_ERROR_THROW(INVALID_IMAGE_SIZE);
-    REQ_ERROR_THROW(IMAGE_FORMAT_NOT_SUPPORTED);
-    REQ_ERROR_THROW(MEM_OBJECT_ALLOCATION_FAILURE);
-    REQ_ERROR_THROW(INVALID_OPERATION);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_MISALIGNED_SUB_BUFFER_OFFSET);
+    REQ_ERROR_THROW(CL_INVALID_IMAGE_SIZE);
+    REQ_ERROR_THROW(CL_MEM_OBJECT_ALLOCATION_FAILURE);
+    REQ_ERROR_THROW(CL_INVALID_OPERATION);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -1099,18 +1033,17 @@ NAN_METHOD(CommandQueue::enqueueCopyBufferToImage)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(MISALIGNED_SUB_BUFFER_OFFSET);
-    REQ_ERROR_THROW(INVALID_IMAGE_SIZE);
-    REQ_ERROR_THROW(IMAGE_FORMAT_NOT_SUPPORTED);
-    REQ_ERROR_THROW(MEM_OBJECT_ALLOCATION_FAILURE);
-    REQ_ERROR_THROW(INVALID_OPERATION);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_MISALIGNED_SUB_BUFFER_OFFSET);
+    REQ_ERROR_THROW(CL_INVALID_IMAGE_SIZE);
+    REQ_ERROR_THROW(CL_MEM_OBJECT_ALLOCATION_FAILURE);
+    REQ_ERROR_THROW(CL_INVALID_OPERATION);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -1153,18 +1086,17 @@ NAN_METHOD(CommandQueue::enqueueMapBuffer)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(MISALIGNED_SUB_BUFFER_OFFSET);
-    REQ_ERROR_THROW(MAP_FAILURE);
-    REQ_ERROR_THROW(EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
-    REQ_ERROR_THROW(MEM_OBJECT_ALLOCATION_FAILURE);
-    REQ_ERROR_THROW(INVALID_OPERATION);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_MISALIGNED_SUB_BUFFER_OFFSET);
+    REQ_ERROR_THROW(CL_MAP_FAILURE);
+    REQ_ERROR_THROW(CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
+    REQ_ERROR_THROW(CL_MEM_OBJECT_ALLOCATION_FAILURE);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -1244,19 +1176,18 @@ NAN_METHOD(CommandQueue::enqueueMapImage)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(INVALID_IMAGE_SIZE);
-    REQ_ERROR_THROW(IMAGE_FORMAT_NOT_SUPPORTED);
-    REQ_ERROR_THROW(MAP_FAILURE);
-    REQ_ERROR_THROW(EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
-    REQ_ERROR_THROW(MEM_OBJECT_ALLOCATION_FAILURE);
-    REQ_ERROR_THROW(INVALID_OPERATION);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_INVALID_IMAGE_SIZE);
+    REQ_ERROR_THROW(CL_MAP_FAILURE);
+    REQ_ERROR_THROW(CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
+    REQ_ERROR_THROW(CL_MEM_OBJECT_ALLOCATION_FAILURE);
+    REQ_ERROR_THROW(CL_INVALID_OPERATION);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -1309,14 +1240,13 @@ NAN_METHOD(CommandQueue::enqueueUnmapMemObject)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -1332,21 +1262,42 @@ NAN_METHOD(CommandQueue::enqueueMarker)
   NanScope();
   CommandQueue *cq = ObjectWrap::Unwrap<CommandQueue>(args.This());
 
-  cl_event event;
-  bool no_event = (args[0]->IsUndefined() || args[0]->IsNull());
+  MakeEventWaitList(args[0]);
 
-  cl_int ret = ::clEnqueueMarker(cq->getCommandQueue(), no_event ? NULL : &event);
+  cl_event event;
+  bool no_event = (args[1]->IsUndefined() || args[1]->IsNull());
+
+  cl_int ret = ::clEnqueueMarker(cq->getCommandQueue(),
+  no_event ? NULL : &event);
+
+  if(events_wait_list && ret==CL_SUCCESS) {
+    cl_int ret2 = ::clEnqueueWaitForEvents(
+        cq->getCommandQueue(),
+        num_events_wait_list,
+        events_wait_list);
+    if (ret2 != CL_SUCCESS) {
+      REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+      REQ_ERROR_THROW(CL_INVALID_VALUE);
+      REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+      REQ_ERROR_THROW(CL_INVALID_EVENT);
+      REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+      REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
+      return NanThrowError("UNKNOWN ERROR");
+    }
+
+    delete[] events_wait_list;
+  }
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
   if(!no_event) {
-    Event *e=ObjectWrap::Unwrap<Event>(args[0]->ToObject());
+    Event *e=ObjectWrap::Unwrap<Event>(args[1]->ToObject());
     e->setEvent(event);
   }
   NanReturnUndefined();
@@ -1367,13 +1318,12 @@ NAN_METHOD(CommandQueue::enqueueWaitForEvents)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_EVENT);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_EVENT);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -1399,12 +1349,12 @@ NAN_METHOD(CommandQueue::enqueueBarrier)
         events_wait_list);
 
     if (ret2 != CL_SUCCESS) {
-      REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-      REQ_ERROR_THROW(INVALID_CONTEXT);
-      REQ_ERROR_THROW(INVALID_VALUE);
-      REQ_ERROR_THROW(INVALID_EVENT);
-      REQ_ERROR_THROW(OUT_OF_RESOURCES);
-      REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+      REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+      REQ_ERROR_THROW(CL_INVALID_VALUE);
+      REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+      REQ_ERROR_THROW(CL_INVALID_EVENT);
+      REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+      REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
       return NanThrowError("UNKNOWN ERROR");
     }
 
@@ -1412,9 +1362,9 @@ NAN_METHOD(CommandQueue::enqueueBarrier)
   }
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -1447,14 +1397,14 @@ class FinishWorker : public NanAsyncWorker {
   void Execute () {
     // SetErrorMessage("Error");
     // printf("[async event] execute\n");
-    CommandQueue *cq = ObjectWrap::Unwrap<CommandQueue>(NanPersistentToLocal(baton_->parent));
+    CommandQueue *cq = ObjectWrap::Unwrap<CommandQueue>(NanNew(baton_->parent));
 
     cl_int ret = ::clFinish(cq->getCommandQueue());
     if (ret != CL_SUCCESS) {
-      REQ_ERROR_THROW_NONE(INVALID_COMMAND_QUEUE);
-      REQ_ERROR_THROW_NONE(OUT_OF_RESOURCES);
-      REQ_ERROR_THROW_NONE(OUT_OF_HOST_MEMORY);
-	    return;
+      REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+      REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+      REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
+	  return;// NanThrowError("UNKNOWN ERROR");
     }
   }
 
@@ -1466,7 +1416,7 @@ class FinishWorker : public NanAsyncWorker {
 
     // // must return passed data
     Local<Value> argv[] = {
-      NanPersistentToLocal(baton_->parent),  // event
+      NanNew(baton_->parent),  // event
     };
 
     // printf("[async event] callback JS\n");
@@ -1483,10 +1433,10 @@ NAN_METHOD(CommandQueue::finish)
   NanScope();
   CommandQueue *cq = ObjectWrap::Unwrap<CommandQueue>(args.This());
 
-  if(args.Length()>0 && args[0]->IsFunction()) {
+  if(args[1]->IsFunction()) {
       Baton *baton=new Baton();
-      NanAssignPersistent(v8::Object, baton->parent, NanObjectWrapHandle(cq));
-      baton->callback=new NanCallback(args[0].As<Function>());
+      NanAssignPersistent(baton->parent, NanObjectWrapHandle(cq));
+      baton->callback=new NanCallback(args[1].As<Function>());
       NanAsyncQueueWorker(new FinishWorker(baton));
       NanReturnUndefined();
   }
@@ -1494,9 +1444,9 @@ NAN_METHOD(CommandQueue::finish)
   cl_int ret = ::clFinish(cq->getCommandQueue());
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -1510,9 +1460,9 @@ NAN_METHOD(CommandQueue::flush)
   cl_int ret = ::clFlush(cq->getCommandQueue());
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -1556,14 +1506,14 @@ NAN_METHOD(CommandQueue::enqueueAcquireGLObjects)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_GL_OBJECT);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_GL_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -1611,14 +1561,14 @@ NAN_METHOD(CommandQueue::enqueueReleaseGLObjects)
   if(events_wait_list) delete[] events_wait_list;
 
   if (ret != CL_SUCCESS) {
-    REQ_ERROR_THROW(INVALID_VALUE);
-    REQ_ERROR_THROW(INVALID_MEM_OBJECT);
-    REQ_ERROR_THROW(INVALID_COMMAND_QUEUE);
-    REQ_ERROR_THROW(INVALID_CONTEXT);
-    REQ_ERROR_THROW(INVALID_GL_OBJECT);
-    REQ_ERROR_THROW(INVALID_EVENT_WAIT_LIST);
-    REQ_ERROR_THROW(OUT_OF_RESOURCES);
-    REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+    REQ_ERROR_THROW(CL_INVALID_VALUE);
+    REQ_ERROR_THROW(CL_INVALID_MEM_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_COMMAND_QUEUE);
+    REQ_ERROR_THROW(CL_INVALID_CONTEXT);
+    REQ_ERROR_THROW(CL_INVALID_GL_OBJECT);
+    REQ_ERROR_THROW(CL_INVALID_EVENT_WAIT_LIST);
+    REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+    REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
     return NanThrowError("UNKNOWN ERROR");
   }
 
@@ -1643,8 +1593,8 @@ CommandQueue *CommandQueue::New(cl_command_queue cw)
 
   NanScope();
 
-  Local<Value> arg = Integer::NewFromUnsigned(0);
-  Local<FunctionTemplate> constructorHandle = NanPersistentToLocal(constructor_template);
+  Local<Value> arg = Integer::NewFromUnsigned(v8::Isolate::GetCurrent(),0);
+  Local<FunctionTemplate> constructorHandle = NanNew(constructor_template);
   Local<Object> obj = constructorHandle->GetFunction()->NewInstance(1, &arg);
 
   CommandQueue *commandqueue = ObjectWrap::Unwrap<CommandQueue>(obj);

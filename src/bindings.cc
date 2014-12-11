@@ -35,17 +35,16 @@
 #include "platform.h"
 #include "program.h"
 #include "sampler.h"
-#include "exceptions.h"
 
 #include <cstdlib>
 
 using namespace v8;
 
-#define JS_CL_CONSTANT(name) target->Set(JS_STR( #name ), JS_INT(CL_ ## name))
+#define JS_CL_CONSTANT(name) target->ForceSet(JS_STR( #name ), JS_INT(CL_ ## name))
 
 #define NODE_DEFINE_CONSTANT_VALUE(target, name, value)                   \
-  (target)->Set(NanSymbol(name),                         \
-                v8::Integer::New(value),                               \
+  (target)->ForceSet(NanSymbol(name),                         \
+                v8::Integer::New(v8::Isolate::GetCurrent(),value),                               \
                 static_cast<v8::PropertyAttribute>(v8::ReadOnly|v8::DontDelete))
 
 
@@ -74,16 +73,13 @@ void init(Handle<Object> target)
   webcl::Context::Init(target);
   webcl::Device::Init(target);
   webcl::Event::Init(target);
-  webcl::UserEvent::Init(target);
   webcl::Kernel::Init(target);
   webcl::MemoryObject::Init(target);
   webcl::WebCLBuffer::Init(target);
   webcl::WebCLImage::Init(target);
-  webcl::WebCLImageDescriptor::Init(target);
   webcl::Platform::Init(target);
   webcl::Program::Init(target);
   webcl::Sampler::Init(target);
-  webcl::WebCLException::Init(target);
 
   // OpenCL 1.1 constants
 

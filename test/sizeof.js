@@ -30,8 +30,6 @@ if(nodejs) {
   log = console.log;
   exit = process.exit;
 }
-else
-  WebCL = window.webcl;
 
 (function main() {
   /* CL objects */
@@ -71,7 +69,10 @@ else
 
   var context=null;
   try {
-    context=WebCL.createContext(WebCL.DEVICE_TYPE_GPU);
+    context=WebCL.createContext({
+      deviceType: WebCL.DEVICE_TYPE_GPU, 
+      platform: platform
+    });
   }
   catch(ex) {
     throw new Exception("Can't create CL context");
@@ -204,7 +205,7 @@ else
   /* Create kernel argument */
   try {
     kernel.setArg(0, data_buffer);
-    kernel.setArg(1, new Int32Array([NUM_ELEMS])); /* Tell kernel number of elements */
+    kernel.setArg(1, NUM_ELEMS, WebCL.type.UINT); /* Tell kernel number of elements */
     kernel.setArg(2, ret_buffer); /* Pass pointer to returned number of values */
 
   } catch(ex) {

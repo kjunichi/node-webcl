@@ -40,8 +40,8 @@ void Sampler::Init(Handle<Object> target)
   NanScope();
 
   // constructor
-  Local<FunctionTemplate> ctor = FunctionTemplate::New(Sampler::New);
-  NanAssignPersistent(FunctionTemplate, constructor_template, ctor);
+  Local<FunctionTemplate> ctor = FunctionTemplate::New(v8::Isolate::GetCurrent(),Sampler::New);
+  NanAssignPersistent(constructor_template, ctor);
   ctor->InstanceTemplate()->SetInternalFieldCount(1);
   ctor->SetClassName(NanSymbol("WebCLSampler"));
 
@@ -54,7 +54,6 @@ void Sampler::Init(Handle<Object> target)
 
 Sampler::Sampler(Handle<Object> wrapper) : sampler(0)
 {
-  _type=CLObjType::Sampler;
 }
 
 void Sampler::Destructor() {
@@ -89,34 +88,25 @@ NAN_METHOD(Sampler::getInfo)
     cl_uint param_value=0;
     cl_int ret=::clGetSamplerInfo(sampler->getSampler(), param_name,sizeof(cl_uint), &param_value, NULL);
     if (ret != CL_SUCCESS) {
-      REQ_ERROR_THROW(INVALID_VALUE);
-      REQ_ERROR_THROW(INVALID_SAMPLER);
-      REQ_ERROR_THROW(OUT_OF_RESOURCES);
-      REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+      REQ_ERROR_THROW(CL_INVALID_VALUE);
+      REQ_ERROR_THROW(CL_INVALID_SAMPLER);
+      REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+      REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
       return NanThrowError("UNKNOWN ERROR");
     }
-    NanReturnValue(Integer::NewFromUnsigned(param_value));
+    NanReturnValue(Integer::NewFromUnsigned(v8::Isolate::GetCurrent(),param_value));
   }
   case CL_SAMPLER_CONTEXT:{
     cl_context param_value=0;
     cl_int ret=::clGetSamplerInfo(sampler->getSampler(), param_name,sizeof(cl_context), &param_value, NULL);
     if (ret != CL_SUCCESS) {
-      REQ_ERROR_THROW(INVALID_VALUE);
-      REQ_ERROR_THROW(INVALID_SAMPLER);
-      REQ_ERROR_THROW(OUT_OF_RESOURCES);
-      REQ_ERROR_THROW(OUT_OF_HOST_MEMORY);
+      REQ_ERROR_THROW(CL_INVALID_VALUE);
+      REQ_ERROR_THROW(CL_INVALID_SAMPLER);
+      REQ_ERROR_THROW(CL_OUT_OF_RESOURCES);
+      REQ_ERROR_THROW(CL_OUT_OF_HOST_MEMORY);
       return NanThrowError("UNKNOWN ERROR");
     }
-    if(param_value) {
-      WebCLObject *obj=findCLObj((void*)param_value);
-      if(obj) {
-        //::clRetainContext(param_value);
-        NanReturnValue(NanObjectWrapHandle(obj));
-      }
-      else
-        NanReturnValue(NanObjectWrapHandle(Context::New(param_value)));
-    }
-    NanReturnUndefined();
+    NanReturnValue(NanObjectWrapHandle(Context::New(param_value)));
   }
   default:
     return NanThrowError("UNKNOWN param_name");
@@ -141,8 +131,8 @@ Sampler *Sampler::New(cl_sampler sw)
 
   NanScope();
 
-  Local<Value> arg = Integer::NewFromUnsigned(0);
-  Local<FunctionTemplate> constructorHandle = NanPersistentToLocal(constructor_template);
+  Local<Value> arg = Integer::NewFromUnsigned(v8::Isolate::GetCurrent(),0);
+  Local<FunctionTemplate> constructorHandle = NanNew(constructor_template);
   Local<Object> obj = constructorHandle->GetFunction()->NewInstance(1, &arg);
 
   Sampler *sampler = ObjectWrap::Unwrap<Sampler>(obj);
