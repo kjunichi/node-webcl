@@ -88,9 +88,9 @@ NAN_METHOD(Context::release)
 {
   NanScope();
   Context *context = ObjectWrap::Unwrap<Context>(args.This());
-  
+
   DESTROY_WEBCL_OBJECT(context);
-  
+
   NanReturnUndefined();
 }
 
@@ -98,11 +98,11 @@ NAN_METHOD(Context::releaseAll)
 {
   NanScope();
   Context *context = ObjectWrap::Unwrap<Context>(args.This());
-  
+
   // TODO delete all objects in context and release context
 
   DESTROY_WEBCL_OBJECT(context);
-  
+
   NanReturnUndefined();
 }
 
@@ -189,7 +189,7 @@ NAN_METHOD(Context::createProgram)
     Local<String> str = args[0]->ToString();
     String::Utf8Value utf8(str);
 
-    size_t lengths[]={utf8.length()};
+    size_t lengths[]={static_cast<size_t>(utf8.length())};
     const char *strings[]={*utf8};
     pw=::clCreateProgramWithSource(context->getContext(), 1, strings, lengths, &ret);
 
