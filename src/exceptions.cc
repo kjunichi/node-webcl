@@ -78,10 +78,10 @@ void WebCLException::Init(Handle<Object> target)
   NanScope();
 
   // constructor
-  Local<FunctionTemplate> ctor = FunctionTemplate::New(WebCLException::New);
-  NanAssignPersistent(FunctionTemplate, constructor_template, ctor);
+  Local<FunctionTemplate> ctor = NanNew<FunctionTemplate>(WebCLException::New);
+  NanAssignPersistent(constructor_template, ctor);
   ctor->InstanceTemplate()->SetInternalFieldCount(1);
-  ctor->SetClassName(NanSymbol("WebCLException"));
+  ctor->SetClassName(NanNew("WebCLException"));
 
   // prototype
   Local<ObjectTemplate> proto = ctor->PrototypeTemplate();
@@ -89,7 +89,7 @@ void WebCLException::Init(Handle<Object> target)
   proto->SetAccessor(JS_STR("description"), GetDescription, NULL);
   proto->SetAccessor(JS_STR("code"), GetCode, NULL);
 
-  target->Set(NanSymbol("WebCLException"), ctor->GetFunction());
+  target->Set(NanNew("WebCLException"), ctor->GetFunction());
 }
 
 WebCLException::WebCLException(Handle<Object> wrapper)
@@ -132,8 +132,8 @@ WebCLException *WebCLException::New(const char *name, const char *desc, const in
 
   NanScope();
 
-  Local<Value> arg = Integer::NewFromUnsigned(0);
-  Local<FunctionTemplate> constructorHandle = NanPersistentToLocal(constructor_template);
+  Local<Value> arg = NanNew(0);
+  Local<FunctionTemplate> constructorHandle = NanNew(constructor_template);
   Local<Object> obj = constructorHandle->GetFunction()->NewInstance(1, &arg);
 
   WebCLException *ex = ObjectWrap::Unwrap<WebCLException>(obj);
