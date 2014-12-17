@@ -30,12 +30,14 @@ if(nodejs) {
   clu = require('../lib/clUtils');
   log=console.log;
 }
+else
+  WebCL = window.webcl;
 
 //First check if the WebCL extension is installed at all 
 if (WebCL == undefined) {
   alert("Unfortunately your system does not support WebCL. " +
   "Make sure that you have the WebCL extension installed.");
-  return;
+  process.exit(-1);
 }
 
 VectorAdd();
@@ -60,10 +62,7 @@ function VectorAdd() {
   log('using device: '+devices[0].getInfo(WebCL.DEVICE_NAME));
 
   // create GPU context for this platform
-  context=WebCL.createContext({
-	  deviceType: WebCL.DEVICE_TYPE_DEFAULT, 
-	  platform: platform
-  });
+  context=WebCL.createContext(WebCL.DEVICE_TYPE_DEFAULT);
 
   kernelSourceCode = [
 "__kernel void vadd(__global int *a, __global int *b, __global int *c, uint iNumElements) ",
@@ -101,7 +100,7 @@ function VectorAdd() {
   kernel.setArg(0, aBuffer);
   kernel.setArg(1, bBuffer);
   kernel.setArg(2, cBuffer);
-  kernel.setArg(3, BUFFER_SIZE, WebCL.type.UINT);
+  kernel.setArg(3, new Uint32Array([BUFFER_SIZE]));
 
   // Create command queue
   queue=context.createCommandQueue(devices[0], 0);
@@ -119,7 +118,7 @@ function VectorAdd() {
 
   // Execute (enqueue) kernel
   log("using enqueueNDRangeKernel");
-  queue.enqueueNDRangeKernel(kernel,
+  queue.enqueueNDRangeKernel(kernel, 1, 
       null,
       globalWS,
       localWS);
